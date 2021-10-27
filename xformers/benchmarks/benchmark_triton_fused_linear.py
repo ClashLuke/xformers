@@ -14,11 +14,11 @@ from xformers.components import Activation, build_activation
 from xformers.triton.fused_linear_layer import FusedLinear
 
 SHAPES = [
-    (8, 256, 512),
-    (8, 512, 1024),
-    (4, 1024, 1024),
-    (2, 2048, 2048),
-    (2, 4096, 4096),
+    (8, 512, 256),  # Batch x Seq x Embedding
+    (8, 512, 512),
+    (4, 512, 1024),
+    (2, 512, 2048),
+    (2, 512, 4096),
 ]
 
 
@@ -58,7 +58,7 @@ def bench_linear(activations: List[Optional[Activation]]):
         torch.float16,
         torch.float32,
     ]:
-        for backward in [False, True]:
+        for backward in [True, False]:
 
             results: Dict[str, Any] = {}
 
@@ -142,5 +142,7 @@ def bench_linear(activations: List[Optional[Activation]]):
             pretty_plot(results, title, "TFlops/s", dash_key="pytorch")
 
 
-activations = [ac for ac in Activation] + [None]  # type: ignore
+activations = [
+    Activation.SquaredReLU
+]  # [ac for ac in Activation] + [None]  # type: ignore
 bench_linear(activations)  # type: ignore

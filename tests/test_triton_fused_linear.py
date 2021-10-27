@@ -142,7 +142,7 @@ def test_fused_linear_parity(shape, activation: Activation, bias: bool, amp: boo
             assert triton_fused_linear.bias.grad is not None
             assert torch.allclose(
                 torch_linear.bias.grad, triton_fused_linear.bias.grad, atol=tolerance
-            )
+            ), f"{torch_linear.bias.grad} vs. {triton_fused_linear.bias.grad}"
 
         # Check that the linear layer weights are also properly trainable
         assert torch.allclose(
