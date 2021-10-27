@@ -78,10 +78,8 @@ def kernel_fma(
     )  # if `num_pid_m` isn't divisible by `GROUP_M`, the last group is smaller
 
     # *within groups*, programs are ordered in a column-major order
-    # row-id of the program in the *launch grid*
+    # row-id /col-id of the program in the *launch grid*
     pid_m = first_pid_m + (pid % GROUP_M)
-
-    # col-id of the program in the *launch grid*
     pid_n = (pid % num_pid_in_group) // GROUP_M
 
     # rm (resp. rn) denotes a range of indices
@@ -365,12 +363,15 @@ def kernel_fused_grad_bias_grad_weight(
     grad_weight_acc = tl.zeros((BLOCK_N, BLOCK_K), dtype=tl.float32)
     grad_bias_acc = tl.zeros((BLOCK_N,), dtype=tl.float32)
 
+    mask_nm = (rn[:, None] < N) & (rm[None, :] < M)
+    mask_mk = (rm[:, None] < M) & (rk[None, :] < K)
     for _ in range(M, 0, -BLOCK_M):
-        grad_act = tl.load(grad_act_ptrs, mask=(rn[:, None] < N) & (rm[None, :] < M), other=0.0)  # BLOCK_N x BLOCK_M
-        inputs = tl.load(inputs_ptrs, mask=(rm[:, None] < M) & (rk[None, :] < K), other=0.0)  # BLOCK_M x BLOCK_K
+        grad_act = tl.load(grad_act_ptrs, mask=mask_nm, other=0.0)  # BLOCK_N x BLOCK_M
+        inputs = tl.load(inputs_ptrs, mask=mask_mk, other=0.0)  # BLOCK_M x BLOCK_K
 
         # sum up all the activation gradients on the sample axis -> grad bias
-        grad_bias_acc += tl.sum(grad_act, axis=1).to(tl.float32)
+        if META["COMPUTE_GRAD_BIAS"]:
+            grad_bias_acc += tl.sum(grad_act, axis=1).to(tl.float32)
 
         # matmul the activation gradients and the inputs -> grad weight
         grad_weight_acc += tl.dot(grad_act, inputs).to(tl.float32)
@@ -382,7 +383,8 @@ def kernel_fused_grad_bias_grad_weight(
     grad_weight_ptrs = G_WEIGHT + rn[:, None] * stride_gwn + rk[None, :] * stride_gwk
     tl.store(grad_weight_ptrs, grad_weight_acc, mask=(rn[:, None] < N) & (rk[None, :] < K))
 
-    tl.store(G_BIAS + rn, grad_bias_acc, mask=rn < N)
+    if META["COMPUTE_GRAD_BIAS"]:
+        tl.store(G_BIAS + rn, grad_bias_acc, mask=rn < N)
 
 
 # Activation needs to be a triton kernel
@@ -473,7 +475,10 @@ def fused_matmul_backward(
             # data reuse optimization
             GROUP_ROW=8,
             BLOCK_M=32,
+            COMPUTE_GRAD_BIAS=False  # NOTE: not using the feature for now, slower than naive computations
         )
+
+        grad_bias = torch.sum(grad_act, dim=0) if trainable_bias else None
         # fmt: on
 
     else:

@@ -60,9 +60,9 @@ def bench_linear(activations: List[Optional[Activation]]):
     ]:
         for backward in [True, False]:
 
-            results: Dict[str, Any] = {}
-
             for activation in activations:
+                results: Dict[str, Any] = {}
+
                 for bias in [False, True]:
                     for B, M, K in SHAPES:
                         a = torch.rand(
@@ -129,20 +129,18 @@ def bench_linear(activations: List[Optional[Activation]]):
                             metric = metrics_transform(time)
                             results[key][testcase.name] = f"{metric:.1f}"
 
-            pretty_print(
-                results,
-                title="\n --- Type: {} ---".format(dtype),
-                units="TFlops/s",
-            )
+                pretty_print(
+                    results,
+                    title="\n --- Type: {} ---".format(dtype),
+                    units="TFlops/s",
+                )
 
-            _type = "_fp16" if dtype == torch.float16 else "_fp32"
-            title = "FusedLinear" + _type + "_FW"
-            if backward:
-                title += "_BW"
-            pretty_plot(results, title, "TFlops/s", dash_key="pytorch")
+                _type = "_fp16" if dtype == torch.float16 else "_fp32"
+                title = "FusedLinear" + _type + "_FW"
+                if backward:
+                    title += "_BW"
+                pretty_plot(results, title, "TFlops/s", dash_key="pytorch")
 
 
-activations = [
-    Activation.SquaredReLU
-]  # [ac for ac in Activation] + [None]  # type: ignore
+activations = [ac for ac in Activation] + [None]  # type: ignore
 bench_linear(activations)  # type: ignore
